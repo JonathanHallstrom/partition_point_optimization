@@ -142,8 +142,8 @@ pub fn main() !void {
     defer file.close();
     const stdout = file;
 
-    // var rng = std.Random.DefaultPrng.init(0);
-    // const rand = rng.random();
+    var rng = std.Random.DefaultPrng.init(0);
+    const rand = rng.random();
 
     var N: usize = 1;
     var buffer_array_list = std.ArrayList(Tp).init(allocator);
@@ -177,8 +177,7 @@ pub fn main() !void {
         // for (queries) |*e| e.* = 0;
 
         // one past the end
-        for (queries) |*e| e.* = @intCast(N);
-
+        // for (queries) |*e| e.* = @intCast(N);
 
         // mix of first, one past the end, and uniform
         // for (queries) |*e| e.* = switch (rand.int(u2)) {
@@ -186,6 +185,14 @@ pub fn main() !void {
         //     1, 2 => rand.intRangeAtMost(Tp, 0, @intCast(N)),
         //     3 => @intCast(N),
         // };
+
+        // mix of first, middle, and one past the end
+        for (queries) |*e| e.* = switch (rand.intRangeAtMost(u2, 0, 2)) {
+            0 => 0,
+            1 => @intCast(N / 2),
+            2 => @intCast(N),
+            else => unreachable,
+        };
 
         var new_i: u32 = 0;
         var new_ns: usize = 0;
