@@ -187,12 +187,14 @@ pub fn main() !void {
         // };
 
         // mix of first, middle, and one past the end
-        for (queries) |*e| e.* = switch (rand.intRangeAtMost(u2, 0, 2)) {
-            0 => 0,
-            1 => @intCast(N / 2),
-            2 => @intCast(N),
-            else => unreachable,
-        };
+        // for (queries) |*e| e.* = switch (rand.intRangeAtMost(u2, 0, 2)) {
+        //     0 => 0,
+        //     1 => @intCast(N / 2),
+        //     2 => @intCast(N),
+        //     else => unreachable,
+        // };
+
+        for (queries) |*e| e.* = rand.intRangeLessThan(Tp, 0, @intCast(@min(N, 1)));
 
         var new_i: u32 = 0;
         var new_ns: usize = 0;
