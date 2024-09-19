@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr  
 import pandas as pd
 
-def main():
-    file = open("data.txt", "r")
+def main(n, is_last):
+    file = open(f"data{n}.txt", "r")
     lines = file.readlines()
 
     data = []
@@ -25,8 +25,8 @@ def main():
 
     df_to_plot = df
 
-    plt.plot(df_to_plot["size"], df_to_plot["new"].rolling(20).median(), label="new")
-    plt.plot(df_to_plot["size"], df_to_plot["old"].rolling(20).median(), label="old")
+    plt.plot(df_to_plot["size"], df_to_plot["new"].rolling(20).quantile(0.1), label="new")
+    plt.plot(df_to_plot["size"], df_to_plot["old"].rolling(20).quantile(0.1), label="old")
     
 
     plt.xlabel("size(bytes)")
@@ -47,9 +47,13 @@ def main():
     plt.gca().yaxis.set_minor_locator(tkr.LogLocator(base=10.0, subs=range(10), numticks=1))
     plt.legend()
 
-    plt.title("partition point benchmark")
+    plt.title(f"partition point benchmark (queries on {f'range [0, {2 ** n} )' if not is_last else 'whole range'})")
 
-    plt.savefig("graph.png")
-    plt.show()
+    plt.savefig(f"graph{n}.png")
+    plt.clf()
+    file.close()
 
-if __name__ == "__main__": main()
+if __name__ == "__main__": 
+    num_benches = 8
+    for n in range(num_benches):
+        main(n, n == num_benches - 1)

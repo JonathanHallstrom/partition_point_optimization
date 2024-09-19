@@ -105,9 +105,12 @@ test partitionPointNew {
 
 const allocator = std.heap.c_allocator;
 
-const iterations_per_byte = 1024;
+const iterations_per_byte = 2048;
 const warmup_iterations = 64;
 const repeats = 16;
+const num_benchmarks = 8;
+const growth_factor = 300;
+const max_bytes = 1 << 24;
 
 comptime {
     std.debug.assert(iterations_per_byte % repeats == 0);
@@ -137,118 +140,123 @@ pub fn main() !void {
         try sched_setaffinity(0, &cpu0001);
     }
 
-    const max_bytes = 1 << 24;
-    var file = try std.fs.cwd().createFile("data.txt", .{});
-    defer file.close();
-    const stdout = file;
-
-    var rng = std.Random.DefaultPrng.init(0);
-    const rand = rng.random();
-
-    var N: usize = 1;
-    var buffer_array_list = std.ArrayList(Tp).init(allocator);
-    defer buffer_array_list.deinit();
-
-    const queries = try allocator.alloc(Tp, iterations_per_byte + warmup_iterations);
-    defer allocator.free(queries);
-
     var new_sum_logs: f64 = 0;
     var old_sum_logs: f64 = 0;
     var num_entries: f64 = 0;
 
-    const Factor = 200;
+    var buf: [1 << 10]u8 = undefined;
 
-    while (N < max_bytes) {
-        defer N = (N * (Factor + 1) + Factor - 1) / Factor;
+    for (0..8) |benchmark| {
+        std.debug.print("progress: {}/{}        \r", .{ benchmark, num_benchmarks });
+        const data_filename = try std.fmt.bufPrint(&buf, "data{}.txt", .{benchmark});
+        var file = try std.fs.cwd().createFile(data_filename, .{});
+        defer file.close();
+        const stdout = file;
 
-        buffer_array_list.clearRetainingCapacity();
-        const buffer = try buffer_array_list.addManyAsSlice(N);
+        var rng = std.Random.DefaultPrng.init(0);
+        const rand = rng.random();
 
-        for (0..N) |i| buffer[i] = @intCast(i);
-        clflush(Tp, buffer);
+        var N: usize = 1;
+        var buffer_array_list = std.ArrayList(Tp).init(allocator);
+        defer buffer_array_list.deinit();
 
-        // uniform over whole range
-        // for (queries) |*e| e.* = rand.intRangeAtMost(Tp, 0, @intCast(N));
+        const queries = try allocator.alloc(Tp, iterations_per_byte + warmup_iterations);
+        defer allocator.free(queries);
 
-        // uniform over first 16
-        // for (queries) |*e| e.* = rand.intRangeAtMost(Tp, 0, @intCast(@min(N, 16)));
+        while (N < max_bytes) {
+            defer N = (N * (growth_factor + 1) + growth_factor - 1) / growth_factor;
 
-        // first
-        // for (queries) |*e| e.* = 0;
+            buffer_array_list.clearRetainingCapacity();
+            const buffer = try buffer_array_list.addManyAsSlice(N);
 
-        // one past the end
-        // for (queries) |*e| e.* = @intCast(N);
+            // uniform over whole range
+            // for (queries) |*e| e.* = rand.intRangeAtMost(Tp, 0, @intCast(N));
 
-        // mix of first, one past the end, and uniform
-        // for (queries) |*e| e.* = switch (rand.int(u2)) {
-        //     0 => 0,
-        //     1, 2 => rand.intRangeAtMost(Tp, 0, @intCast(N)),
-        //     3 => @intCast(N),
-        // };
+            // uniform over first 16
+            // for (queries) |*e| e.* = rand.intRangeAtMost(Tp, 0, @intCast(@min(N, 16)));
 
-        // mix of first, middle, and one past the end
-        // for (queries) |*e| e.* = switch (rand.intRangeAtMost(u2, 0, 2)) {
-        //     0 => 0,
-        //     1 => @intCast(N / 2),
-        //     2 => @intCast(N),
-        //     else => unreachable,
-        // };
+            // first
+            // for (queries) |*e| e.* = 0;
 
-        for (queries) |*e| e.* = rand.intRangeLessThan(Tp, 0, @intCast(@min(N, 1)));
+            // one past the end
+            // for (queries) |*e| e.* = @intCast(N);
 
-        var new_i: u32 = 0;
-        var new_ns: usize = 0;
-        while (new_i < iterations_per_byte + warmup_iterations) : (new_i += repeats) {
-            const start = std.time.Instant.now() catch unreachable;
+            // mix of first, one past the end, and uniform
+            // for (queries) |*e| e.* = switch (rand.int(u2)) {
+            //     0 => 0,
+            //     1, 2 => rand.intRangeAtMost(Tp, 0, @intCast(N)),
+            //     3 => @intCast(N),
+            // };
 
-            for (0..repeats) |offs| {
-                std.mem.doNotOptimizeAway(partitionPointNew(
-                    Tp,
-                    buffer,
-                    queries[new_i + offs],
-                    lower,
-                ));
+            // mix of first, middle, and one past the end
+            // for (queries) |*e| e.* = switch (rand.intRangeAtMost(u2, 0, 2)) {
+            //     0 => 0,
+            //     1 => @intCast(N / 2),
+            //     2 => @intCast(N),
+            //     else => unreachable,
+            // };
+
+            const upper_bound: u32 = if (benchmark == num_benchmarks - 1) @intCast(N) else @as(u32, 1) << @as(u5, @intCast(benchmark));
+            for (queries) |*e| e.* = rand.intRangeLessThan(Tp, 0, @intCast(@min(N, upper_bound)));
+
+            for (0..N) |i| buffer[i] = @intCast(i);
+            // cant run cross platform benchmarks with this
+            // clflush(Tp, buffer);
+
+            var new_i: u32 = 0;
+            var new_ns: usize = 0;
+            while (new_i < iterations_per_byte + warmup_iterations) : (new_i += repeats) {
+                const start = std.time.Instant.now() catch unreachable;
+
+                for (0..repeats) |offs| {
+                    std.mem.doNotOptimizeAway(partitionPointNew(
+                        Tp,
+                        buffer,
+                        queries[new_i + offs],
+                        lower,
+                    ));
+                }
+
+                const end = std.time.Instant.now() catch unreachable;
+                if (new_i > warmup_iterations) new_ns += end.since(start);
             }
 
-            const end = std.time.Instant.now() catch unreachable;
-            if (new_i > warmup_iterations) new_ns += end.since(start);
-        }
+            for (0..N) |i| buffer[i] = @intCast(i);
+            // cant run cross platform benchmarks with this
+            // clflush(Tp, buffer);
 
-        for (0..N) |i| buffer[i] = @intCast(i);
-        clflush(Tp, buffer);
+            var old_i: u32 = 0;
+            var old_ns: usize = 0;
+            while (old_i < iterations_per_byte + warmup_iterations) : (old_i += repeats) {
+                const start = std.time.Instant.now() catch unreachable;
 
-        var old_i: u32 = 0;
-        var old_ns: usize = 0;
-        while (old_i < iterations_per_byte + warmup_iterations) : (old_i += repeats) {
-            const start = std.time.Instant.now() catch unreachable;
+                for (0..repeats) |offs| {
+                    std.mem.doNotOptimizeAway(partitionPoint(
+                        Tp,
+                        buffer,
+                        queries[old_i + offs],
+                        lower,
+                    ));
+                }
 
-            for (0..repeats) |offs| {
-                std.mem.doNotOptimizeAway(partitionPoint(
-                    Tp,
-                    buffer,
-                    queries[old_i + offs],
-                    lower,
-                ));
+                const end = std.time.Instant.now() catch unreachable;
+                if (old_i > warmup_iterations) old_ns += end.since(start);
             }
 
-            const end = std.time.Instant.now() catch unreachable;
-            if (old_i > warmup_iterations) old_ns += end.since(start);
+            const new_cycles_per_byte = @as(f64, @floatFromInt(new_ns)) / @as(f64, @floatFromInt(iterations_per_byte));
+            const old_cycles_per_byte = @as(f64, @floatFromInt(old_ns)) / @as(f64, @floatFromInt(iterations_per_byte));
+
+            new_sum_logs += @log(new_cycles_per_byte);
+            old_sum_logs += @log(old_cycles_per_byte);
+            num_entries += 1.0;
+
+            try stdout.writer().print("{},{d:.4},{d:.4}\n", .{
+                N * @sizeOf(Tp),
+                new_cycles_per_byte,
+                old_cycles_per_byte,
+            });
         }
-
-        const new_cycles_per_byte = @as(f64, @floatFromInt(new_ns)) / @as(f64, @floatFromInt(iterations_per_byte));
-        const old_cycles_per_byte = @as(f64, @floatFromInt(old_ns)) / @as(f64, @floatFromInt(iterations_per_byte));
-
-        new_sum_logs += @log(new_cycles_per_byte);
-        old_sum_logs += @log(old_cycles_per_byte);
-        num_entries += 1.0;
-
-        try stdout.writer().print("{},{d:.4},{d:.4}\n", .{
-            N * @sizeOf(Tp),
-            new_cycles_per_byte,
-            old_cycles_per_byte,
-        });
     }
-
     const new_geo_mean = @exp(new_sum_logs / num_entries);
     const old_geo_mean = @exp(old_sum_logs / num_entries);
 
