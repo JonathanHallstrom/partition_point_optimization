@@ -29,6 +29,16 @@ pub fn partitionPointNew(
     var it: usize = 0;
     var len: usize = items.len;
 
+    const branchy_limit = (4 * std.atomic.cache_line) / @sizeOf(T);
+    if (branchy_limit > 1) {
+        while (len > branchy_limit) {
+            const half: usize = len / 2;
+            len -= half;
+            if (predicate(context, items[it + half - 1])) {
+                it += half;
+            }
+        }
+    }
     while (len > 1) {
         const half: usize = len / 2;
         len -= half;
