@@ -115,11 +115,11 @@ test partitionPointNew {
 
 const allocator = std.heap.c_allocator;
 
-const iterations_per_byte = 2048;
+const iterations_per_byte = 1024;
 const warmup_iterations = 64;
 const repeats = 16;
-const num_benchmarks = 8;
-const growth_factor = 300;
+const num_benchmarks = 101;
+const growth_factor = 200;
 const max_bytes = 1 << 24;
 
 comptime {
@@ -156,7 +156,7 @@ pub fn main() !void {
 
     var buf: [1 << 10]u8 = undefined;
 
-    for (0..8) |benchmark| {
+    for (0..num_benchmarks) |benchmark| {
         std.debug.print("progress: {}/{}        \r", .{ benchmark, num_benchmarks });
         const data_filename = try std.fmt.bufPrint(&buf, "data{}.txt", .{benchmark});
         var file = try std.fs.cwd().createFile(data_filename, .{});
@@ -206,8 +206,11 @@ pub fn main() !void {
             //     else => unreachable,
             // };
 
-            const upper_bound: u32 = if (benchmark == num_benchmarks - 1) @intCast(N) else @as(u32, 1) << @as(u5, @intCast(benchmark));
-            for (queries) |*e| e.* = rand.intRangeLessThan(Tp, 0, @intCast(@min(N, upper_bound)));
+            // const upper_bound: u32 = if (benchmark == num_benchmarks - 1) @intCast(N) else @as(u32, 1) << @as(u5, @intCast(benchmark));
+            // for (queries) |*e| e.* = rand.intRangeLessThan(Tp, 0, @intCast(@min(N, upper_bound)));
+
+            // benchmark% of queries are random, rest are 0
+            for (queries) |*e| e.* = if (rand.intRangeLessThan(u8, 0, 100) < benchmark) rand.intRangeLessThan(Tp, 0, @intCast(N)) else 0;
 
             for (0..N) |i| buffer[i] = @intCast(i);
             // cant run cross platform benchmarks with this

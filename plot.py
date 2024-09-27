@@ -47,13 +47,14 @@ def main(n, is_last):
     plt.gca().yaxis.set_minor_locator(tkr.LogLocator(base=10.0, subs=range(10), numticks=1))
     plt.legend()
 
-    plt.title(f"partition point benchmark (queries on {f'range [0, {2 ** n} )' if not is_last else 'whole range'})")
+    # plt.title(f"partition point benchmark (queries on {f'range [0, {2 ** n} )' if not is_last else 'whole range'})")
+    plt.title(f"partition point benchmark ({n}% of queries unpredictable)")
 
     plt.savefig(f"graph{n}.png")
     plt.clf()
     file.close()
 
 if __name__ == "__main__": 
-    num_benches = 8
+    num_benches = 101 
     for n in range(num_benches):
         main(n, n == num_benches - 1)
